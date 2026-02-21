@@ -569,25 +569,26 @@ public sealed class MainWindow : IDisposable
             return;
         }
 
-        // Column header
+        // Column header — wider right margin to fit "NQ+HQhq" style values
         ImGui.Spacing();
         ImGui.TextColored(new Vector4(0.6f, 0.6f, 0.6f, 1.0f), "  Material");
-        ImGui.SameLine(ImGui.GetWindowWidth() - 120);
+        ImGui.SameLine(ImGui.GetWindowWidth() - 140);
         ImGui.TextColored(new Vector4(0.6f, 0.6f, 0.6f, 1.0f), "Have");
-        ImGui.SameLine(ImGui.GetWindowWidth() - 70);
+        ImGui.SameLine(ImGui.GetWindowWidth() - 80);
         ImGui.TextColored(new Vector4(0.6f, 0.6f, 0.6f, 1.0f), "Need");
+
+        var hqBlue = new Vector4(0.4f, 0.8f, 1.0f, 1.0f);
 
         foreach (var (itemId, (name, nqNeed, hqNeed)) in totals.OrderBy(kv => kv.Value.Name))
         {
-            var totalNeed = nqNeed + hqNeed;
             GetInventoryCountSplit(itemId, out var haveNq, out var haveHq);
 
-            // HQ items satisfy both HQ and NQ slots; NQ items only satisfy NQ slots.
-            // Check HQ need first, then use leftover HQ + NQ stock for NQ need.
-            var hqShortfall = Math.Max(0, hqNeed - haveHq);
-            var effectiveNqHave = haveNq + Math.Max(0, haveHq - hqNeed);
-            var enough = hqShortfall == 0 && effectiveNqHave >= nqNeed;
-            var haveTotal = haveNq + haveHq;
+            // HQ stock satisfies HQ need first, then any leftover HQ covers NQ need.
+            // NQ stock only satisfies NQ need.
+            var hqSatisfied = haveHq >= hqNeed;
+            var leftoverHq  = Math.Max(0, haveHq - hqNeed);
+            var nqSatisfied = (haveNq + leftoverHq) >= nqNeed;
+            var enough = hqSatisfied && nqSatisfied;
 
             ImGui.PushID((int)itemId);
 
@@ -595,23 +596,52 @@ public sealed class MainWindow : IDisposable
 
             if (ImGui.IsItemHovered())
             {
-                // Always show tooltip with NQ/HQ breakdown
                 var tip = hqNeed > 0
                     ? $"Need: {nqNeed} NQ + {hqNeed} HQ\nHave: {haveNq} NQ + {haveHq} HQ"
-                    : $"Need: {totalNeed} NQ\nHave: {haveNq} NQ + {haveHq} HQ (HQ counts too)";
+                    : $"Need: {nqNeed} NQ\nHave: {haveNq} NQ + {haveHq} HQ (HQ counts as NQ)";
                 ImGui.SetTooltip(tip);
             }
 
-            // Have count — green if sufficient, red if not
-            ImGui.SameLine(ImGui.GetWindowWidth() - 120);
-            var haveColor = enough
-                ? new Vector4(0.3f, 1.0f, 0.3f, 1.0f)
-                : new Vector4(1.0f, 0.35f, 0.35f, 1.0f);
-            ImGui.TextColored(haveColor, $"{haveTotal}");
+            // ── Have column ──────────────────────────────────────────
+            ImGui.SameLine(ImGui.GetWindowWidth() - 140);
+            if (haveHq > 0)
+            {
+                // Show NQ in normal color, HQ in blue — e.g. "3+2hq"
+                var nqColor = nqSatisfied ? new Vector4(0.3f, 1.0f, 0.3f, 1.0f) : new Vector4(1.0f, 0.35f, 0.35f, 1.0f);
+                ImGui.TextColored(nqColor, $"{haveNq}");
+                ImGui.SameLine(0, 0);
+                ImGui.TextColored(hqBlue, $"+{haveHq}");
+                ImGui.SameLine(0, 2);
+                ImGui.TextColored(new Vector4(0.4f, 0.8f, 1.0f, 0.7f), "hq");
+            }
+            else
+            {
+                var haveColor = enough ? new Vector4(0.3f, 1.0f, 0.3f, 1.0f) : new Vector4(1.0f, 0.35f, 0.35f, 1.0f);
+                ImGui.TextColored(haveColor, $"{haveNq}");
+            }
 
-            // Need count
-            ImGui.SameLine(ImGui.GetWindowWidth() - 70);
-            ImGui.TextColored(new Vector4(0.85f, 0.85f, 0.85f, 1.0f), $"{totalNeed}");
+            // ── Need column ──────────────────────────────────────────
+            ImGui.SameLine(ImGui.GetWindowWidth() - 80);
+            if (hqNeed > 0 && nqNeed > 0)
+            {
+                // e.g. "1+1hq"
+                ImGui.TextColored(new Vector4(0.85f, 0.85f, 0.85f, 1.0f), $"{nqNeed}");
+                ImGui.SameLine(0, 0);
+                ImGui.TextColored(hqBlue, $"+{hqNeed}");
+                ImGui.SameLine(0, 2);
+                ImGui.TextColored(new Vector4(0.4f, 0.8f, 1.0f, 0.7f), "hq");
+            }
+            else if (hqNeed > 0)
+            {
+                // All HQ — e.g. "2hq"
+                ImGui.TextColored(hqBlue, $"{hqNeed}");
+                ImGui.SameLine(0, 2);
+                ImGui.TextColored(new Vector4(0.4f, 0.8f, 1.0f, 0.7f), "hq");
+            }
+            else
+            {
+                ImGui.TextColored(new Vector4(0.85f, 0.85f, 0.85f, 1.0f), $"{nqNeed}");
+            }
 
             ImGui.PopID();
         }
