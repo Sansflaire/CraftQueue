@@ -22,11 +22,9 @@ public sealed class Configuration : IPluginConfiguration
     // Queue behavior
     public bool AutoRemoveCompleted { get; set; } = true;
     public bool ConfirmBeforeRemoving { get; set; } = false;
-    public bool ShowMaterialDetailsOnHover { get; set; } = true;
 
     // Artisan integration
     public bool ShowArtisanStatus { get; set; } = true;
-    public bool WarnIfArtisanMissing { get; set; } = true;
     public int PollingIntervalMs { get; set; } = 500;
 
     // Favorites

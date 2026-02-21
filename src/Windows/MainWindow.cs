@@ -24,11 +24,13 @@ public sealed class MainWindow : IDisposable
     private readonly IChatGui chatGui;
     private readonly IPluginLog log;
 
+    // Reference to settings window so we can toggle it from the gear button
+    private readonly SettingsWindow settingsWindow;
+
     public bool IsVisible { get; set; }
 
     // State for the "Add from Crafting Log" section
     private int addQuantity = 1;
-    private bool addUseHq = false;
 
     // Cached info about the currently selected recipe in the crafting log
     private ushort cachedRecipeId;
@@ -58,6 +60,7 @@ public sealed class MainWindow : IDisposable
         RecipeNoteMonitor recipeMonitor,
         Configuration config,
         IDalamudPluginInterface pluginInterface,
+        SettingsWindow settingsWindow,
         IDataManager dataManager,
         ICondition condition,
         IChatGui chatGui,
@@ -68,6 +71,7 @@ public sealed class MainWindow : IDisposable
         this.recipeMonitor = recipeMonitor;
         this.config = config;
         this.pluginInterface = pluginInterface;
+        this.settingsWindow = settingsWindow;
         this.dataManager = dataManager;
         this.condition = condition;
         this.chatGui = chatGui;
@@ -204,16 +208,7 @@ public sealed class MainWindow : IDisposable
             return;
 
         // Status text
-        if (!artisan.ArtisanAvailable)
-        {
-            ImGui.TextColored(new Vector4(1.0f, 0.3f, 0.3f, 1.0f), "Artisan: Not Available");
-            if (config.WarnIfArtisanMissing)
-            {
-                ImGui.SameLine();
-                ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1.0f), "(Install Artisan to craft)");
-            }
-        }
-        else if (artisanPaused)
+        if (artisanPaused)
         {
             ImGui.TextColored(new Vector4(1.0f, 0.8f, 0.0f, 1.0f), "Artisan: Paused");
         }
@@ -226,15 +221,17 @@ public sealed class MainWindow : IDisposable
             ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1.0f), "Artisan: Idle");
         }
 
-        // Control buttons on the same line
-        ImGui.SameLine(ImGui.GetWindowWidth() - 200);
+        // Control buttons on the right
+        ImGui.SameLine(ImGui.GetWindowWidth() - 230);
 
         var canCraft = artisan.ArtisanAvailable && !artisanBusy && queueManager.Count > 0;
         if (!canCraft)
             ImGui.BeginDisabled();
 
-        if (ImGui.Button("Craft All"))
-            OnCraftAll();
+        // Button label depends on AutoCraftEntireList setting
+        var craftLabel = config.AutoCraftEntireList ? "Craft All" : "Craft Next";
+        if (ImGui.Button(craftLabel))
+            OnCraftButton();
 
         if (!canCraft)
             ImGui.EndDisabled();
@@ -266,6 +263,18 @@ public sealed class MainWindow : IDisposable
 
         if (!artisanBusy)
             ImGui.EndDisabled();
+
+        // Gear icon for settings
+        ImGui.SameLine();
+        if (ImGui.SmallButton("S"))
+        {
+            settingsWindow.IsVisible = !settingsWindow.IsVisible;
+        }
+
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Settings");
+        }
     }
 
     private void DrawQueueList()
@@ -294,7 +303,8 @@ public sealed class MainWindow : IDisposable
             return;
         }
 
-        ImGui.Spacing();
+        if (!config.CompactMode)
+            ImGui.Spacing();
 
         for (var i = 0; i < queueManager.Items.Count; i++)
         {
@@ -304,11 +314,18 @@ public sealed class MainWindow : IDisposable
             ImGui.PopID();
         }
 
-        ImGui.Spacing();
+        if (!config.CompactMode)
+            ImGui.Spacing();
     }
 
     private void DrawQueueItem(QueueItem item, int index)
     {
+        // Compact mode: reduce vertical spacing
+        if (config.CompactMode)
+        {
+            ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, new Vector2(ImGui.GetStyle().ItemSpacing.X, 2));
+        }
+
         // Status color
         var statusColor = item.Status switch
         {
@@ -342,25 +359,6 @@ public sealed class MainWindow : IDisposable
                 }
             }
             ImGui.EndDragDropTarget();
-        }
-
-        ImGui.SameLine();
-
-        // Favorite star toggle
-        var isFav = IsFavorite(item.RecipeId);
-        var starColor = isFav
-            ? new Vector4(1.0f, 0.85f, 0.0f, 1.0f)
-            : new Vector4(0.4f, 0.4f, 0.4f, 1.0f);
-        ImGui.TextColored(starColor, isFav ? "*" : "o");
-
-        if (ImGui.IsItemClicked())
-        {
-            ToggleFavorite(item.RecipeId, item.ItemName);
-        }
-
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.SetTooltip(isFav ? "Remove from Favorites" : "Add to Favorites");
         }
 
         ImGui.SameLine();
@@ -412,6 +410,11 @@ public sealed class MainWindow : IDisposable
         {
             queueManager.RemoveItem(item.Id);
         }
+
+        if (config.CompactMode)
+        {
+            ImGui.PopStyleVar();
+        }
     }
 
     private void DrawFavorites()
@@ -443,7 +446,7 @@ public sealed class MainWindow : IDisposable
                     // Quick-add button
                     if (ImGui.SmallButton($"Add x{fav.DefaultQuantity}"))
                     {
-                        queueManager.AddItem(fav.RecipeId, fav.ItemName, fav.DefaultQuantity, !fav.DefaultNqOnly);
+                        queueManager.AddItem(fav.RecipeId, fav.ItemName, fav.DefaultQuantity);
                         chatGui.Print($"[CraftQueue] Added {fav.DefaultQuantity}x {fav.ItemName} from favorites.");
                     }
 
@@ -472,22 +475,13 @@ public sealed class MainWindow : IDisposable
 
                         ImGui.SameLine();
 
-                        var nqOnly = fav.DefaultNqOnly;
-                        if (ImGui.Checkbox("NQ Only", ref nqOnly))
+                        if (ImGui.Button("Remove"))
                         {
-                            fav.DefaultNqOnly = nqOnly;
-                            SaveConfig();
+                            toRemove = fav;
+                            ImGui.CloseCurrentPopup();
                         }
 
                         ImGui.EndPopup();
-                    }
-
-                    ImGui.SameLine();
-
-                    // Remove from favorites
-                    if (ImGui.SmallButton("X"))
-                    {
-                        toRemove = fav;
                     }
 
                     ImGui.PopID();
@@ -526,11 +520,6 @@ public sealed class MainWindow : IDisposable
         ImGui.SameLine();
         ImGui.TextColored(new Vector4(0.6f, 0.6f, 0.6f, 1.0f), $"({cachedJobName} Lv.{cachedRecipeLevel})");
 
-        // Material preference
-        ImGui.Text("  Materials:");
-        ImGui.SameLine();
-        ImGui.Checkbox("Use HQ materials", ref addUseHq);
-
         // Quantity input
         ImGui.Text("  Quantity:");
         ImGui.SameLine();
@@ -547,7 +536,7 @@ public sealed class MainWindow : IDisposable
             if (string.IsNullOrEmpty(name) || name.StartsWith("Recipe #"))
                 name = ResolveItemName(cachedRecipeId);
 
-            queueManager.AddItem(cachedRecipeId, name, addQuantity, addUseHq);
+            queueManager.AddItem(cachedRecipeId, name, addQuantity);
             chatGui.Print($"[CraftQueue] Added {addQuantity}x {name} to queue.");
             log.Info($"MainWindow: Added {addQuantity}x {name} (recipe {cachedRecipeId}) to queue.");
         }
@@ -577,14 +566,6 @@ public sealed class MainWindow : IDisposable
     private bool IsFavorite(ushort recipeId)
     {
         return config.Favorites.Any(f => f.RecipeId == recipeId);
-    }
-
-    private void ToggleFavorite(ushort recipeId, string itemName)
-    {
-        if (IsFavorite(recipeId))
-            RemoveFavorite(recipeId);
-        else
-            AddFavorite(recipeId, itemName, 1);
     }
 
     private void AddFavorite(ushort recipeId, string itemName, int defaultQuantity)
@@ -638,7 +619,12 @@ public sealed class MainWindow : IDisposable
         chatGui.Print($"[CraftQueue] Sending {item.Quantity}x {item.ItemName} to Artisan.");
     }
 
-    private void OnCraftAll()
+    /// <summary>
+    /// Called when the main craft button is pressed.
+    /// If AutoCraftEntireList is on, crafts all items sequentially.
+    /// If off, crafts only the first pending item (Craft Next).
+    /// </summary>
+    private void OnCraftButton()
     {
         if (artisanBusy)
         {
@@ -653,12 +639,16 @@ public sealed class MainWindow : IDisposable
             return;
         }
 
-        isCraftingList = true;
+        isCraftingList = config.AutoCraftEntireList;
         isCraftingAny = true;
         queueManager.SetStatus(first.Id, QueueItemStatus.Crafting);
         currentCraftingItemId = first.Id;
         artisan.CraftItem(first.RecipeId, first.Quantity);
-        chatGui.Print($"[CraftQueue] Starting queue: {first.Quantity}x {first.ItemName}");
+
+        if (config.AutoCraftEntireList)
+            chatGui.Print($"[CraftQueue] Starting queue: {first.Quantity}x {first.ItemName}");
+        else
+            chatGui.Print($"[CraftQueue] Crafting next: {first.Quantity}x {first.ItemName}");
     }
 
     /// <summary>

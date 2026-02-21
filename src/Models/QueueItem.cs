@@ -25,7 +25,6 @@ public sealed class QueueItem
     public string ItemName { get; set; } = string.Empty;
     public int Quantity { get; set; } = 1;
     public int CraftedSoFar { get; set; }
-    public bool UseHqMaterials { get; set; }
     public MaterialPreference[] Materials { get; set; } = Array.Empty<MaterialPreference>();
     public DateTime AddedAt { get; set; } = DateTime.Now;
     public QueueItemStatus Status { get; set; } = QueueItemStatus.Pending;

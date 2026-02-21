@@ -24,7 +24,7 @@ public sealed class SettingsWindow : IDisposable
         if (!IsVisible)
             return;
 
-        ImGui.SetNextWindowSize(new Vector2(420, 460), ImGuiCond.FirstUseEver);
+        ImGui.SetNextWindowSize(new Vector2(420, 400), ImGuiCond.FirstUseEver);
 
         var visible = IsVisible;
         if (ImGui.Begin("Craft Queue Settings", ref visible, ImGuiWindowFlags.NoCollapse))
@@ -71,7 +71,8 @@ public sealed class SettingsWindow : IDisposable
 
             ImGui.TextColored(new Vector4(0.6f, 0.6f, 0.6f, 1.0f),
                 "  When checked, 'Craft All' processes items top-to-bottom.\n" +
-                "  When unchecked, only the selected item is crafted.");
+                "  When unchecked, button becomes 'Craft Next' and crafts\n" +
+                "  only the first pending item.");
         }
     }
 
@@ -126,13 +127,6 @@ public sealed class SettingsWindow : IDisposable
                 config.ConfirmBeforeRemoving = confirm;
                 Save();
             }
-
-            var showMaterials = config.ShowMaterialDetailsOnHover;
-            if (ImGui.Checkbox("Show material details on hover", ref showMaterials))
-            {
-                config.ShowMaterialDetailsOnHover = showMaterials;
-                Save();
-            }
         }
     }
 
@@ -144,13 +138,6 @@ public sealed class SettingsWindow : IDisposable
             if (ImGui.Checkbox("Show Artisan status in window", ref showStatus))
             {
                 config.ShowArtisanStatus = showStatus;
-                Save();
-            }
-
-            var warn = config.WarnIfArtisanMissing;
-            if (ImGui.Checkbox("Warn if Artisan is not installed", ref warn))
-            {
-                config.WarnIfArtisanMissing = warn;
                 Save();
             }
 
@@ -184,9 +171,7 @@ public sealed class SettingsWindow : IDisposable
         config.CompactMode = false;
         config.AutoRemoveCompleted = true;
         config.ConfirmBeforeRemoving = false;
-        config.ShowMaterialDetailsOnHover = true;
         config.ShowArtisanStatus = true;
-        config.WarnIfArtisanMissing = true;
         config.PollingIntervalMs = 500;
         Save();
     }

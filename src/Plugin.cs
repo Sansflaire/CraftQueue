@@ -43,8 +43,8 @@ public sealed class Plugin : IDalamudPlugin
         artisan = new ArtisanIpcBridge(PluginInterface, Log);
         recipeMonitor = new RecipeNoteMonitor(AddonLifecycle, Log);
         queueManager = new QueueManager();
-        mainWindow = new MainWindow(queueManager, artisan, recipeMonitor, config, PluginInterface, DataManager, Condition, ChatGui, Log);
         settingsWindow = new SettingsWindow(config, PluginInterface);
+        mainWindow = new MainWindow(queueManager, artisan, recipeMonitor, config, PluginInterface, settingsWindow, DataManager, Condition, ChatGui, Log);
 
         // Wire up events
         recipeMonitor.CraftingLogOpened += OnCraftingLogOpened;

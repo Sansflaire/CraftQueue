@@ -15,14 +15,13 @@ public sealed class QueueManager
 
     public event Action? QueueChanged;
 
-    public QueueItem AddItem(ushort recipeId, string itemName, int quantity, bool useHqMaterials = false, MaterialPreference[]? materials = null)
+    public QueueItem AddItem(ushort recipeId, string itemName, int quantity, MaterialPreference[]? materials = null)
     {
         var item = new QueueItem
         {
             RecipeId = recipeId,
             ItemName = itemName,
             Quantity = Math.Clamp(quantity, 1, 9999),
-            UseHqMaterials = useHqMaterials,
             Materials = materials ?? Array.Empty<MaterialPreference>(),
         };
 
