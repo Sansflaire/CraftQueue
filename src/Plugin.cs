@@ -51,21 +51,18 @@ public sealed class Plugin : IDalamudPlugin
         recipeMonitor.CraftingLogClosed += OnCraftingLogClosed;
 
         // Register commands
-        var commandInfo = new CommandInfo(OnCommand)
+        CommandManager.AddHandler(CommandShort, new CommandInfo(OnCommand)
         {
             HelpMessage =
-                "Craft Queue commands:\n" +
-                "  /cq              Toggle the queue window\n" +
-                "  /cq settings     Open settings\n" +
-                "  /cq clear        Clear the queue\n" +
-                "  /cq craft        Start crafting\n" +
-                "  /cq stop         Stop crafting\n" +
-                "  /cq pause        Pause crafting\n" +
-                "  /cq resume       Resume crafting",
-        };
+                "Toggle the queue window\n" +
+                "  /cq settings  Open settings\n" +
+                "  /cq stop      Stop Artisan",
+        });
 
-        CommandManager.AddHandler(CommandMain, commandInfo);
-        CommandManager.AddHandler(CommandShort, commandInfo);
+        CommandManager.AddHandler(CommandMain, new CommandInfo(OnCommand)
+        {
+            HelpMessage = "Alias for /cq",
+        });
 
         // Register UI callbacks
         PluginInterface.UiBuilder.Draw += OnDraw;
@@ -122,34 +119,13 @@ public sealed class Plugin : IDalamudPlugin
                 settingsWindow.IsVisible = !settingsWindow.IsVisible;
                 break;
 
-            case "clear":
-                queueManager.ClearQueue();
-                ChatGui.Print("[CraftQueue] Queue cleared.");
-                break;
-
-            case "craft":
-                mainWindow.IsVisible = true;
-                // Trigger craft-all via the window's logic
-                ChatGui.Print("[CraftQueue] Use the Craft All button in the window.");
-                break;
-
             case "stop":
-                artisan.SetStopRequest(true);
+                mainWindow.StopCrafting();
                 ChatGui.Print("[CraftQueue] Stop requested.");
                 break;
 
-            case "pause":
-                artisan.SetListPause(true);
-                ChatGui.Print("[CraftQueue] Paused.");
-                break;
-
-            case "resume":
-                artisan.SetListPause(false);
-                ChatGui.Print("[CraftQueue] Resumed.");
-                break;
-
             default:
-                ChatGui.Print($"[CraftQueue] Unknown command: {sub}. Use /cq for help.");
+                ChatGui.Print("[CraftQueue] Usage: /cq | /cq settings | /cq stop");
                 break;
         }
     }

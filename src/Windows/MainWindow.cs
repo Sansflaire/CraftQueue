@@ -222,7 +222,7 @@ public sealed class MainWindow : IDisposable
         }
 
         // Control buttons on the right
-        ImGui.SameLine(ImGui.GetWindowWidth() - 230);
+        ImGui.SameLine(ImGui.GetWindowWidth() - 180);
 
         var canCraft = artisan.ArtisanAvailable && !artisanBusy && queueManager.Count > 0;
         if (!canCraft)
@@ -241,24 +241,10 @@ public sealed class MainWindow : IDisposable
         if (!artisanBusy)
             ImGui.BeginDisabled();
 
-        if (artisanPaused)
-        {
-            if (ImGui.Button("Resume"))
-                artisan.SetListPause(false);
-        }
-        else
-        {
-            if (ImGui.Button("Pause"))
-                artisan.SetListPause(true);
-        }
-
-        ImGui.SameLine();
-
         if (ImGui.Button("Stop"))
         {
-            artisan.SetStopRequest(true);
-            isCraftingAny = false;
-            isCraftingList = false;
+            StopCrafting();
+            chatGui.Print("[CraftQueue] Stop requested.");
         }
 
         if (!artisanBusy)
@@ -602,6 +588,16 @@ public sealed class MainWindow : IDisposable
     }
 
     // ─── Crafting logic ─────────────────────────────────────────────────
+
+    /// <summary>
+    /// Stops any active crafting. Called from the Stop button and /cq stop.
+    /// </summary>
+    public void StopCrafting()
+    {
+        artisan.SetStopRequest(true);
+        isCraftingAny = false;
+        isCraftingList = false;
+    }
 
     private void OnCraftSingle(QueueItem item)
     {
