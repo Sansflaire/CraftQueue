@@ -590,11 +590,11 @@ public sealed class MainWindow : IDisposable
     // ─── Crafting logic ─────────────────────────────────────────────────
 
     /// <summary>
-    /// Stops any active crafting. Called from the Stop button and /cq stop.
+    /// Stops CraftQueue from sending any more items to Artisan.
+    /// Does NOT interfere with Artisan — it can finish its current craft.
     /// </summary>
     public void StopCrafting()
     {
-        artisan.SetStopRequest(true);
         isCraftingAny = false;
         isCraftingList = false;
     }
