@@ -359,7 +359,7 @@ public sealed class MainWindow : IDisposable
         }
 
         // Quantity controls on the right side
-        ImGui.SameLine(ImGui.GetWindowWidth() - 170);
+        ImGui.SameLine(ImGui.GetWindowWidth() - 195);
 
         if (ImGui.SmallButton("-"))
         {
@@ -389,6 +389,28 @@ public sealed class MainWindow : IDisposable
         if (!canCraftSingle)
             ImGui.EndDisabled();
 
+        // Materials button — colored if any HQ materials are set
+        ImGui.SameLine();
+
+        var hasHq = item.Materials.Length > 0 && item.Materials.Any(m => m.HqCount > 0);
+        if (hasHq)
+            ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.4f, 0.8f, 1.0f, 1.0f));
+
+        if (ImGui.SmallButton("M"))
+        {
+            ImGui.OpenPopup($"mat_popup_{item.Id}");
+        }
+
+        if (hasHq)
+            ImGui.PopStyleColor();
+
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Materials");
+        }
+
+        DrawMaterialsPopup(item);
+
         // Remove button
         ImGui.SameLine();
 
@@ -400,6 +422,82 @@ public sealed class MainWindow : IDisposable
         if (config.CompactMode)
         {
             ImGui.PopStyleVar();
+        }
+    }
+
+    private void DrawMaterialsPopup(QueueItem item)
+    {
+        if (ImGui.BeginPopup($"mat_popup_{item.Id}"))
+        {
+            ImGui.Text($"Materials for {item.ItemName}");
+            ImGui.Separator();
+
+            if (item.Materials.Length == 0)
+            {
+                ImGui.TextColored(new Vector4(0.5f, 0.5f, 0.5f, 1.0f), "No material data available.");
+            }
+            else
+            {
+                // Column headers
+                ImGui.Text("Material");
+                ImGui.SameLine(220);
+                ImGui.Text("NQ");
+                ImGui.SameLine(260);
+                ImGui.Text("HQ");
+                ImGui.Separator();
+
+                for (var i = 0; i < item.Materials.Length; i++)
+                {
+                    var mat = item.Materials[i];
+                    var total = mat.NqCount + mat.HqCount;
+                    ImGui.PushID($"mat_{i}");
+
+                    // Material name
+                    ImGui.Text(mat.ItemName);
+                    ImGui.SameLine(220);
+
+                    // NQ count display
+                    ImGui.Text($"{mat.NqCount}");
+                    ImGui.SameLine(260);
+
+                    // HQ count — editable via toggle
+                    if (mat.HqCount > 0)
+                        ImGui.TextColored(new Vector4(0.4f, 0.8f, 1.0f, 1.0f), $"{mat.HqCount}");
+                    else
+                        ImGui.TextColored(new Vector4(0.5f, 0.5f, 0.5f, 1.0f), "0");
+
+                    ImGui.SameLine(290);
+
+                    // Toggle: move all to HQ
+                    if (mat.HqCount == 0)
+                    {
+                        if (ImGui.SmallButton("Use HQ"))
+                        {
+                            mat.HqCount = total;
+                            mat.NqCount = 0;
+                        }
+                    }
+                    else
+                    {
+                        if (ImGui.SmallButton("Use NQ"))
+                        {
+                            mat.NqCount = total;
+                            mat.HqCount = 0;
+                        }
+                    }
+
+                    ImGui.PopID();
+                }
+            }
+
+            ImGui.Spacing();
+
+            if (ImGui.Button("Close"))
+            {
+                ImGui.CloseCurrentPopup();
+            }
+
+            ImGui.EndPopup();
         }
     }
 
@@ -522,7 +620,8 @@ public sealed class MainWindow : IDisposable
             if (string.IsNullOrEmpty(name) || name.StartsWith("Recipe #"))
                 name = ResolveItemName(cachedRecipeId);
 
-            queueManager.AddItem(cachedRecipeId, name, addQuantity);
+            var materials = ReadRecipeMaterials(cachedRecipeId);
+            queueManager.AddItem(cachedRecipeId, name, addQuantity, materials);
             chatGui.Print($"[CraftQueue] Added {addQuantity}x {name} to queue.");
             log.Info($"MainWindow: Added {addQuantity}x {name} (recipe {cachedRecipeId}) to queue.");
         }
@@ -544,6 +643,55 @@ public sealed class MainWindow : IDisposable
             {
                 AddFavorite(cachedRecipeId, cachedItemName, addQuantity);
             }
+        }
+    }
+
+    // ─── Material reading ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Reads a recipe's ingredient list from Lumina and returns MaterialPreference[]
+    /// with all materials defaulting to NQ.
+    /// </summary>
+    private MaterialPreference[] ReadRecipeMaterials(ushort recipeId)
+    {
+        try
+        {
+            var recipeSheet = dataManager.GetExcelSheet<Recipe>();
+            var recipe = recipeSheet.GetRow(recipeId);
+            var materials = new System.Collections.Generic.List<MaterialPreference>();
+
+            foreach (var ing in recipe.Ingredient)
+            {
+                var item = ing.ValueNullable;
+                if (item == null || item.Value.RowId == 0)
+                    continue;
+
+                // Find the amount for this ingredient index
+                // We'll match by position in the Ingredient collection
+                materials.Add(new MaterialPreference
+                {
+                    ItemId = item.Value.RowId,
+                    ItemName = item.Value.Name.ToString(),
+                    NqCount = 0, // Will be filled with amount below
+                    HqCount = 0,
+                });
+            }
+
+            // Read amounts separately
+            for (var i = 0; i < materials.Count && i < recipe.AmountIngredient.Count; i++)
+            {
+                materials[i].NqCount = recipe.AmountIngredient[i];
+            }
+
+            // Remove entries with zero amount
+            materials.RemoveAll(m => m.NqCount <= 0);
+
+            return materials.ToArray();
+        }
+        catch (Exception ex)
+        {
+            log.Debug($"MainWindow: Failed to read materials for recipe {recipeId}. {ex.Message}");
+            return Array.Empty<MaterialPreference>();
         }
     }
 
