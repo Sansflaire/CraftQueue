@@ -56,7 +56,7 @@ public sealed class Plugin : IDalamudPlugin
             HelpMessage =
                 "Toggle the queue window\n" +
                 "  /cq settings  Open settings\n" +
-                "  /cq stop      Stop Artisan",
+                "  /cq stop      Stop queue",
         });
 
         CommandManager.AddHandler(CommandMain, new CommandInfo(OnCommand)
