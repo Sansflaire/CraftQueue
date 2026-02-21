@@ -22,7 +22,7 @@ src/
     ArtisanIpcBridge.cs      — IPC bridge to Artisan plugin
     RecipeNoteMonitor.cs     — watches crafting log to auto-populate recipe data
   Windows/
-    MainWindow.cs            — primary UI: queue list, search, Artisan status bar
+    MainWindow.cs            — primary UI: queue list, material summary, Artisan status bar
     FavoritesWindow.cs       — pop-out favorites window with groups and drag-drop
     SettingsWindow.cs        — settings UI
 ```
@@ -31,6 +31,7 @@ src/
 - `/cq` — open main window
 - `/cq favorites` / `/cq fav` — toggle favorites window
 - `/cq settings` — open settings
+- `/cq stop` — stop queue
 
 ## Key Patterns
 
@@ -113,3 +114,49 @@ ImGui.SameLine(ImGui.GetWindowWidth() - rightButtonsWidth);
 **11. Overlay widgets (drawn before the real widget + cursor rewind) steal clicks unconditionally**, even when invisible. Only use this pattern conditionally (e.g., only during an active drag). Better: avoid it entirely and use the Selectable pattern above.
 
 **12. Adding/removing widgets between rows causes jarring layout shifts.** Don't insert `InvisibleButton` drop zones between rows conditionally — the vertical expansion when drag starts is very noticeable. Use per-row drop targets on existing row content instead.
+
+### ImGui.Text does not process ID separators
+
+**13. `###` in `ImGui.Text()` / `TextColored()` is rendered literally.** The `###` ID separator (which hides the ID portion from display) only works in widgets that have an ImGui ID — `Button`, `Selectable`, `CollapsingHeader`, etc. Passing `"My Label###my_id"` to `ImGui.Text()` prints `My Label###my_id` verbatim. Use plain string interpolation for text, reserve `###` for interactive widgets.
+
+---
+
+## IGameInventory — Player Inventory API
+
+Inject: `[PluginService] internal static IGameInventory GameInventory { get; private set; } = null!;`
+
+```csharp
+using Dalamud.Game.Inventory;   // GameInventoryType enum lives here
+
+var slots = GameInventory.GetInventoryItems(GameInventoryType.Inventory1);
+foreach (var slot in slots)
+{
+    uint  itemId   = slot.ItemId;    // base item ID (same for NQ and HQ)
+    int   quantity = slot.Quantity;
+    bool  isHq     = slot.IsHq;      // true = HQ copy of the item
+}
+```
+
+- **Enum:** `GameInventoryType.Inventory1` through `Inventory4` for the 4 main bag pages.
+- **HQ vs NQ:** HQ items have the same `ItemId` as their NQ counterpart — distinguish via `slot.IsHq`.
+- **`InventoryType` from `FFXIVClientStructs.FFXIV.Client.Game` is a different type** — cannot be passed to `IGameInventory.GetInventoryItems()`. Always use `Dalamud.Game.Inventory.GameInventoryType`.
+
+### NQ/HQ sufficiency logic
+```csharp
+// HQ stock satisfies HQ need first; leftover HQ covers NQ need too.
+// NQ stock only satisfies NQ need.
+var hqSatisfied  = haveHq >= hqNeed;
+var leftoverHq   = Math.Max(0, haveHq - hqNeed);
+var nqSatisfied  = (haveNq + leftoverHq) >= nqNeed;
+var enough       = hqSatisfied && nqSatisfied;
+```
+
+---
+
+## Auto-open Behaviour — FavoritesWindow
+
+The FavoritesWindow is **user-controlled only**. It must NOT be opened automatically when:
+- The crafting log opens (`OnCraftingLogOpened`)
+- The main UI is requested (`OnOpenMainUi`)
+
+`config.ShowFavorites` controls whether the *section* is shown in UI, not whether the pop-out window auto-opens. The pop-out is toggled only by the `F` button in the main window header or `/cq favorites`.
