@@ -6,6 +6,7 @@
     "Description": "Craft Queue lets you browse recipes from the crafting log, add them to a personal queue with quantities and material preferences, organize them, then send them to Artisan for automated execution. It is the shopping list to Artisan's cook.",
     "ApplicableVersion": "any",
     "DalamudApiLevel": 14,
+    "IconUrl": "https://raw.githubusercontent.com/Sansflaire/CraftQueue/main/icon.png",
     "Tags": [
         "crafting",
         "utility",

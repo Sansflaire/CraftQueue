@@ -1,7 +1,9 @@
 using System;
+using System.Linq;
 using System.Numerics;
 
 using Dalamud.Bindings.ImGui;
+using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 using Lumina.Excel.Sheets;
 
@@ -16,6 +18,7 @@ public sealed class MainWindow : IDisposable
     private readonly ArtisanIpcBridge artisan;
     private readonly RecipeNoteMonitor recipeMonitor;
     private readonly Configuration config;
+    private readonly IDalamudPluginInterface pluginInterface;
     private readonly IDataManager dataManager;
     private readonly ICondition condition;
     private readonly IChatGui chatGui;
@@ -46,11 +49,15 @@ public sealed class MainWindow : IDisposable
     // Drag-and-drop state
     private Guid draggedItemId;
 
+    // Favorites editing state
+    private int editFavoriteQtyValue;
+
     public MainWindow(
         QueueManager queueManager,
         ArtisanIpcBridge artisan,
         RecipeNoteMonitor recipeMonitor,
         Configuration config,
+        IDalamudPluginInterface pluginInterface,
         IDataManager dataManager,
         ICondition condition,
         IChatGui chatGui,
@@ -60,6 +67,7 @@ public sealed class MainWindow : IDisposable
         this.artisan = artisan;
         this.recipeMonitor = recipeMonitor;
         this.config = config;
+        this.pluginInterface = pluginInterface;
         this.dataManager = dataManager;
         this.condition = condition;
         this.chatGui = chatGui;
@@ -137,7 +145,7 @@ public sealed class MainWindow : IDisposable
         if (!IsVisible)
             return;
 
-        ImGui.SetNextWindowSize(new Vector2(520, 480), ImGuiCond.FirstUseEver);
+        ImGui.SetNextWindowSize(new Vector2(520, 560), ImGuiCond.FirstUseEver);
 
         var visible = IsVisible;
         if (ImGui.Begin("Craft Queue", ref visible, ImGuiWindowFlags.None))
@@ -152,6 +160,13 @@ public sealed class MainWindow : IDisposable
                 ImGui.Separator();
                 DrawQueueList();
                 ImGui.Separator();
+
+                if (config.ShowFavorites && config.Favorites.Count > 0)
+                {
+                    DrawFavorites();
+                    ImGui.Separator();
+                }
+
                 DrawAddFromCraftingLog();
             }
         }
@@ -331,6 +346,25 @@ public sealed class MainWindow : IDisposable
 
         ImGui.SameLine();
 
+        // Favorite star toggle
+        var isFav = IsFavorite(item.RecipeId);
+        var starColor = isFav
+            ? new Vector4(1.0f, 0.85f, 0.0f, 1.0f)
+            : new Vector4(0.4f, 0.4f, 0.4f, 1.0f);
+        ImGui.TextColored(starColor, isFav ? "*" : "o");
+
+        if (ImGui.IsItemClicked())
+        {
+            ToggleFavorite(item.RecipeId, item.ItemName);
+        }
+
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip(isFav ? "Remove from Favorites" : "Add to Favorites");
+        }
+
+        ImGui.SameLine();
+
         // Item name with status color
         ImGui.TextColored(statusColor, item.ItemName);
 
@@ -380,6 +414,96 @@ public sealed class MainWindow : IDisposable
         }
     }
 
+    private void DrawFavorites()
+    {
+        if (ImGui.CollapsingHeader($"Favorites ({config.Favorites.Count})###favorites_header"))
+        {
+            if (config.Favorites.Count == 0)
+            {
+                ImGui.TextColored(new Vector4(0.5f, 0.5f, 0.5f, 1.0f), "  No favorites yet. Star a recipe to add it.");
+            }
+            else
+            {
+                // We may remove items during iteration, so track removal
+                FavoriteRecipe? toRemove = null;
+
+                for (var i = 0; i < config.Favorites.Count; i++)
+                {
+                    var fav = config.Favorites[i];
+                    ImGui.PushID($"fav_{fav.RecipeId}");
+
+                    // Star icon
+                    ImGui.TextColored(new Vector4(1.0f, 0.85f, 0.0f, 1.0f), "*");
+                    ImGui.SameLine();
+
+                    // Recipe name
+                    ImGui.Text(fav.ItemName);
+                    ImGui.SameLine();
+
+                    // Quick-add button
+                    if (ImGui.SmallButton($"Add x{fav.DefaultQuantity}"))
+                    {
+                        queueManager.AddItem(fav.RecipeId, fav.ItemName, fav.DefaultQuantity, !fav.DefaultNqOnly);
+                        chatGui.Print($"[CraftQueue] Added {fav.DefaultQuantity}x {fav.ItemName} from favorites.");
+                    }
+
+                    ImGui.SameLine();
+
+                    // Edit default quantity button
+                    if (ImGui.SmallButton("Qty"))
+                    {
+                        ImGui.OpenPopup($"fav_qty_popup_{fav.RecipeId}");
+                        editFavoriteQtyValue = fav.DefaultQuantity;
+                    }
+
+                    if (ImGui.BeginPopup($"fav_qty_popup_{fav.RecipeId}"))
+                    {
+                        ImGui.Text("Default Quantity:");
+                        ImGui.SetNextItemWidth(100);
+                        ImGui.InputInt("##favqty", ref editFavoriteQtyValue);
+                        editFavoriteQtyValue = Math.Clamp(editFavoriteQtyValue, 1, 9999);
+
+                        if (ImGui.Button("Set"))
+                        {
+                            fav.DefaultQuantity = editFavoriteQtyValue;
+                            SaveConfig();
+                            ImGui.CloseCurrentPopup();
+                        }
+
+                        ImGui.SameLine();
+
+                        var nqOnly = fav.DefaultNqOnly;
+                        if (ImGui.Checkbox("NQ Only", ref nqOnly))
+                        {
+                            fav.DefaultNqOnly = nqOnly;
+                            SaveConfig();
+                        }
+
+                        ImGui.EndPopup();
+                    }
+
+                    ImGui.SameLine();
+
+                    // Remove from favorites
+                    if (ImGui.SmallButton("X"))
+                    {
+                        toRemove = fav;
+                    }
+
+                    ImGui.PopID();
+                }
+
+                if (toRemove != null)
+                {
+                    config.Favorites.Remove(toRemove);
+                    SaveConfig();
+                }
+            }
+
+            ImGui.Spacing();
+        }
+    }
+
     private void DrawAddFromCraftingLog()
     {
         ImGui.Text("Add from Crafting Log");
@@ -402,6 +526,11 @@ public sealed class MainWindow : IDisposable
         ImGui.SameLine();
         ImGui.TextColored(new Vector4(0.6f, 0.6f, 0.6f, 1.0f), $"({cachedJobName} Lv.{cachedRecipeLevel})");
 
+        // Material preference
+        ImGui.Text("  Materials:");
+        ImGui.SameLine();
+        ImGui.Checkbox("Use HQ materials", ref addUseHq);
+
         // Quantity input
         ImGui.Text("  Quantity:");
         ImGui.SameLine();
@@ -422,7 +551,76 @@ public sealed class MainWindow : IDisposable
             chatGui.Print($"[CraftQueue] Added {addQuantity}x {name} to queue.");
             log.Info($"MainWindow: Added {addQuantity}x {name} (recipe {cachedRecipeId}) to queue.");
         }
+
+        ImGui.SameLine();
+
+        // Favorite button
+        var isFav = IsFavorite(cachedRecipeId);
+        if (isFav)
+        {
+            if (ImGui.Button("Unfavorite"))
+            {
+                RemoveFavorite(cachedRecipeId);
+            }
+        }
+        else
+        {
+            if (ImGui.Button("Favorite"))
+            {
+                AddFavorite(cachedRecipeId, cachedItemName, addQuantity);
+            }
+        }
     }
+
+    // ─── Favorites helpers ──────────────────────────────────────────────
+
+    private bool IsFavorite(ushort recipeId)
+    {
+        return config.Favorites.Any(f => f.RecipeId == recipeId);
+    }
+
+    private void ToggleFavorite(ushort recipeId, string itemName)
+    {
+        if (IsFavorite(recipeId))
+            RemoveFavorite(recipeId);
+        else
+            AddFavorite(recipeId, itemName, 1);
+    }
+
+    private void AddFavorite(ushort recipeId, string itemName, int defaultQuantity)
+    {
+        if (IsFavorite(recipeId))
+            return;
+
+        config.Favorites.Add(new FavoriteRecipe
+        {
+            RecipeId = recipeId,
+            ItemName = itemName,
+            DefaultQuantity = Math.Clamp(defaultQuantity, 1, 9999),
+            DefaultNqOnly = true,
+        });
+
+        SaveConfig();
+        chatGui.Print($"[CraftQueue] Added {itemName} to favorites.");
+    }
+
+    private void RemoveFavorite(ushort recipeId)
+    {
+        var fav = config.Favorites.FirstOrDefault(f => f.RecipeId == recipeId);
+        if (fav != null)
+        {
+            config.Favorites.Remove(fav);
+            SaveConfig();
+            chatGui.Print($"[CraftQueue] Removed {fav.ItemName} from favorites.");
+        }
+    }
+
+    private void SaveConfig()
+    {
+        pluginInterface.SavePluginConfig(config);
+    }
+
+    // ─── Crafting logic ─────────────────────────────────────────────────
 
     private void OnCraftSingle(QueueItem item)
     {

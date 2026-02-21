@@ -3,7 +3,7 @@ src/bin/
 src/obj/
 
 # Compiled DLL in root (post-build copy target)
-*.dll
+CraftQueue.dll
 *.pdb
 *.deps.json
 

@@ -30,6 +30,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly RecipeNoteMonitor recipeMonitor;
     private readonly QueueManager queueManager;
     private readonly MainWindow mainWindow;
+    private readonly SettingsWindow settingsWindow;
 
     private DateTime lastPoll = DateTime.MinValue;
 
@@ -42,7 +43,8 @@ public sealed class Plugin : IDalamudPlugin
         artisan = new ArtisanIpcBridge(PluginInterface, Log);
         recipeMonitor = new RecipeNoteMonitor(AddonLifecycle, Log);
         queueManager = new QueueManager();
-        mainWindow = new MainWindow(queueManager, artisan, recipeMonitor, config, DataManager, Condition, ChatGui, Log);
+        mainWindow = new MainWindow(queueManager, artisan, recipeMonitor, config, PluginInterface, DataManager, Condition, ChatGui, Log);
+        settingsWindow = new SettingsWindow(config, PluginInterface);
 
         // Wire up events
         recipeMonitor.CraftingLogOpened += OnCraftingLogOpened;
@@ -54,6 +56,7 @@ public sealed class Plugin : IDalamudPlugin
             HelpMessage =
                 "Craft Queue commands:\n" +
                 "  /cq              Toggle the queue window\n" +
+                "  /cq settings     Open settings\n" +
                 "  /cq clear        Clear the queue\n" +
                 "  /cq craft        Start crafting\n" +
                 "  /cq stop         Stop crafting\n" +
@@ -67,6 +70,7 @@ public sealed class Plugin : IDalamudPlugin
         // Register UI callbacks
         PluginInterface.UiBuilder.Draw += OnDraw;
         PluginInterface.UiBuilder.OpenMainUi += OnOpenMainUi;
+        PluginInterface.UiBuilder.OpenConfigUi += OnOpenConfigUi;
 
         // Register framework update for polling
         Framework.Update += OnFrameworkUpdate;
@@ -82,6 +86,7 @@ public sealed class Plugin : IDalamudPlugin
         // Unregister UI
         PluginInterface.UiBuilder.Draw -= OnDraw;
         PluginInterface.UiBuilder.OpenMainUi -= OnOpenMainUi;
+        PluginInterface.UiBuilder.OpenConfigUi -= OnOpenConfigUi;
 
         // Unregister commands
         CommandManager.RemoveHandler(CommandMain);
@@ -92,6 +97,7 @@ public sealed class Plugin : IDalamudPlugin
         recipeMonitor.CraftingLogClosed -= OnCraftingLogClosed;
 
         // Dispose services
+        settingsWindow.Dispose();
         mainWindow.Dispose();
         recipeMonitor.Dispose();
         artisan.Dispose();
@@ -110,6 +116,10 @@ public sealed class Plugin : IDalamudPlugin
         {
             case "":
                 mainWindow.IsVisible = !mainWindow.IsVisible;
+                break;
+
+            case "settings":
+                settingsWindow.IsVisible = !settingsWindow.IsVisible;
                 break;
 
             case "clear":
@@ -138,11 +148,6 @@ public sealed class Plugin : IDalamudPlugin
                 ChatGui.Print("[CraftQueue] Resumed.");
                 break;
 
-            case "settings":
-                // TODO: Phase 2 — settings window
-                ChatGui.Print("[CraftQueue] Settings window coming soon.");
-                break;
-
             default:
                 ChatGui.Print($"[CraftQueue] Unknown command: {sub}. Use /cq for help.");
                 break;
@@ -166,9 +171,15 @@ public sealed class Plugin : IDalamudPlugin
         mainWindow.IsVisible = true;
     }
 
+    private void OnOpenConfigUi()
+    {
+        settingsWindow.IsVisible = true;
+    }
+
     private void OnDraw()
     {
         mainWindow.Draw();
+        settingsWindow.Draw();
     }
 
     private void OnFrameworkUpdate(IFramework framework)
