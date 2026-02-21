@@ -526,7 +526,8 @@ public sealed class MainWindow : IDisposable
     {
         // Build the aggregated material list from pending queue items only
         // (completed items no longer need materials)
-        var totals = new Dictionary<uint, (string Name, int Need)>();
+        // Track NQ and HQ needs separately so we can show accurate inventory status
+        var totals = new Dictionary<uint, (string Name, int NqNeed, int HqNeed)>();
 
         foreach (var item in queueManager.Items)
         {
@@ -535,22 +536,22 @@ public sealed class MainWindow : IDisposable
 
             foreach (var mat in item.Materials)
             {
-                var perCraft = mat.NqCount + mat.HqCount;
-                var total = perCraft * item.Quantity;
-                if (total <= 0)
+                var nqTotal = mat.NqCount * item.Quantity;
+                var hqTotal = mat.HqCount * item.Quantity;
+                if (nqTotal + hqTotal <= 0)
                     continue;
 
                 if (totals.TryGetValue(mat.ItemId, out var existing))
-                    totals[mat.ItemId] = (existing.Name, existing.Need + total);
+                    totals[mat.ItemId] = (existing.Name, existing.NqNeed + nqTotal, existing.HqNeed + hqTotal);
                 else
-                    totals[mat.ItemId] = (mat.ItemName, total);
+                    totals[mat.ItemId] = (mat.ItemName, nqTotal, hqTotal);
             }
         }
 
         // Toggle header with item count
         var label = totals.Count > 0
-            ? $"Materials Needed ({totals.Count})###mat_summary"
-            : "Materials Needed###mat_summary";
+            ? $"Materials Needed ({totals.Count})"
+            : "Materials Needed";
 
         var arrowLabel = materialSummaryOpen ? "v" : ">";
         if (ImGui.SmallButton($"{arrowLabel}##mat_arrow"))
@@ -576,30 +577,41 @@ public sealed class MainWindow : IDisposable
         ImGui.SameLine(ImGui.GetWindowWidth() - 70);
         ImGui.TextColored(new Vector4(0.6f, 0.6f, 0.6f, 1.0f), "Need");
 
-        foreach (var (itemId, (name, need)) in totals.OrderBy(kv => kv.Value.Name))
+        foreach (var (itemId, (name, nqNeed, hqNeed)) in totals.OrderBy(kv => kv.Value.Name))
         {
-            var have = GetInventoryCount(itemId);
-            var enough = have >= need;
+            var totalNeed = nqNeed + hqNeed;
+            GetInventoryCountSplit(itemId, out var haveNq, out var haveHq);
+
+            // HQ items satisfy both HQ and NQ slots; NQ items only satisfy NQ slots.
+            // Check HQ need first, then use leftover HQ + NQ stock for NQ need.
+            var hqShortfall = Math.Max(0, hqNeed - haveHq);
+            var effectiveNqHave = haveNq + Math.Max(0, haveHq - hqNeed);
+            var enough = hqShortfall == 0 && effectiveNqHave >= nqNeed;
+            var haveTotal = haveNq + haveHq;
 
             ImGui.PushID((int)itemId);
 
-            // Material name — truncate if needed
-            var nameWidth = ImGui.GetWindowWidth() - ImGui.GetCursorPosX() - 130;
             ImGui.TextColored(new Vector4(1f, 1f, 1f, 1f), $"  {name}");
 
-            if (ImGui.IsItemHovered() && name.Length > 28)
-                ImGui.SetTooltip(name);
+            if (ImGui.IsItemHovered())
+            {
+                // Always show tooltip with NQ/HQ breakdown
+                var tip = hqNeed > 0
+                    ? $"Need: {nqNeed} NQ + {hqNeed} HQ\nHave: {haveNq} NQ + {haveHq} HQ"
+                    : $"Need: {totalNeed} NQ\nHave: {haveNq} NQ + {haveHq} HQ (HQ counts too)";
+                ImGui.SetTooltip(tip);
+            }
 
             // Have count — green if sufficient, red if not
             ImGui.SameLine(ImGui.GetWindowWidth() - 120);
             var haveColor = enough
                 ? new Vector4(0.3f, 1.0f, 0.3f, 1.0f)
                 : new Vector4(1.0f, 0.35f, 0.35f, 1.0f);
-            ImGui.TextColored(haveColor, $"{have}");
+            ImGui.TextColored(haveColor, $"{haveTotal}");
 
             // Need count
             ImGui.SameLine(ImGui.GetWindowWidth() - 70);
-            ImGui.TextColored(new Vector4(0.85f, 0.85f, 0.85f, 1.0f), $"{need}");
+            ImGui.TextColored(new Vector4(0.85f, 0.85f, 0.85f, 1.0f), $"{totalNeed}");
 
             ImGui.PopID();
         }
@@ -608,11 +620,13 @@ public sealed class MainWindow : IDisposable
     }
 
     /// <summary>
-    /// Returns total count of an item across all 4 main inventory pages.
+    /// Returns NQ and HQ counts of an item separately across all 4 main inventory pages.
+    /// HQ items share the same ItemId but have IsHq = true.
     /// </summary>
-    private int GetInventoryCount(uint itemId)
+    private void GetInventoryCountSplit(uint itemId, out int nqCount, out int hqCount)
     {
-        var total = 0;
+        nqCount = 0;
+        hqCount = 0;
         var pages = new[]
         {
             GameInventoryType.Inventory1,
@@ -628,8 +642,11 @@ public sealed class MainWindow : IDisposable
                 var slots = gameInventory.GetInventoryItems(page);
                 foreach (var slot in slots)
                 {
-                    if (slot.ItemId == itemId)
-                        total += slot.Quantity;
+                    if (slot.ItemId != itemId) continue;
+                    if (slot.IsHq)
+                        hqCount += slot.Quantity;
+                    else
+                        nqCount += slot.Quantity;
                 }
             }
             catch
@@ -637,8 +654,6 @@ public sealed class MainWindow : IDisposable
                 // Inventory not accessible (e.g. not logged in) — skip silently
             }
         }
-
-        return total;
     }
 
     private void DrawAddFromCraftingLog()

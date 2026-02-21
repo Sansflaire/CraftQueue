@@ -146,8 +146,6 @@ public sealed class Plugin : IDalamudPlugin
         if (config.AutoOpenWithCraftingLog)
         {
             mainWindow.IsVisible = true;
-            if (config.ShowFavorites)
-                favoritesWindow.IsVisible = true;
         }
     }
 
@@ -160,8 +158,6 @@ public sealed class Plugin : IDalamudPlugin
     private void OnOpenMainUi()
     {
         mainWindow.IsVisible = true;
-        if (config.ShowFavorites)
-            favoritesWindow.IsVisible = true;
     }
 
     private void OnOpenConfigUi()
