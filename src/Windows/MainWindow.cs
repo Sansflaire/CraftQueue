@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 
 using Dalamud.Bindings.ImGui;
+using Dalamud.Game.Inventory;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 using Lumina.Excel.Sheets;
@@ -21,6 +23,7 @@ public sealed class MainWindow : IDisposable
     private readonly IDalamudPluginInterface pluginInterface;
     private readonly IDataManager dataManager;
     private readonly ICondition condition;
+    private readonly IGameInventory gameInventory;
     private readonly IChatGui chatGui;
     private readonly IPluginLog log;
 
@@ -63,6 +66,7 @@ public sealed class MainWindow : IDisposable
         FavoritesWindow favoritesWindow,
         IDataManager dataManager,
         ICondition condition,
+        IGameInventory gameInventory,
         IChatGui chatGui,
         IPluginLog log)
     {
@@ -75,6 +79,7 @@ public sealed class MainWindow : IDisposable
         this.favoritesWindow = favoritesWindow;
         this.dataManager = dataManager;
         this.condition = condition;
+        this.gameInventory = gameInventory;
         this.chatGui = chatGui;
         this.log = log;
     }
@@ -164,6 +169,8 @@ public sealed class MainWindow : IDisposable
                 DrawArtisanStatus();
                 ImGui.Separator();
                 DrawQueueList();
+                ImGui.Separator();
+                DrawMaterialSummary();
                 ImGui.Separator();
                 DrawAddFromCraftingLog();
             }
@@ -508,6 +515,130 @@ public sealed class MainWindow : IDisposable
 
             ImGui.EndPopup();
         }
+    }
+
+    // ─── Material summary ────────────────────────────────────────────────
+
+    // Persisted across frames so the collapsible remembers its state
+    private bool materialSummaryOpen = true;
+
+    private void DrawMaterialSummary()
+    {
+        // Build the aggregated material list from pending queue items only
+        // (completed items no longer need materials)
+        var totals = new Dictionary<uint, (string Name, int Need)>();
+
+        foreach (var item in queueManager.Items)
+        {
+            if (item.Status == QueueItemStatus.Completed)
+                continue;
+
+            foreach (var mat in item.Materials)
+            {
+                var perCraft = mat.NqCount + mat.HqCount;
+                var total = perCraft * item.Quantity;
+                if (total <= 0)
+                    continue;
+
+                if (totals.TryGetValue(mat.ItemId, out var existing))
+                    totals[mat.ItemId] = (existing.Name, existing.Need + total);
+                else
+                    totals[mat.ItemId] = (mat.ItemName, total);
+            }
+        }
+
+        // Toggle header with item count
+        var label = totals.Count > 0
+            ? $"Materials Needed ({totals.Count})###mat_summary"
+            : "Materials Needed###mat_summary";
+
+        var arrowLabel = materialSummaryOpen ? "v" : ">";
+        if (ImGui.SmallButton($"{arrowLabel}##mat_arrow"))
+            materialSummaryOpen = !materialSummaryOpen;
+
+        ImGui.SameLine();
+        ImGui.Text(label);
+
+        if (!materialSummaryOpen)
+            return;
+
+        if (totals.Count == 0)
+        {
+            ImGui.TextColored(new Vector4(0.5f, 0.5f, 0.5f, 1.0f), "  No materials needed (queue is empty).");
+            return;
+        }
+
+        // Column header
+        ImGui.Spacing();
+        ImGui.TextColored(new Vector4(0.6f, 0.6f, 0.6f, 1.0f), "  Material");
+        ImGui.SameLine(ImGui.GetWindowWidth() - 120);
+        ImGui.TextColored(new Vector4(0.6f, 0.6f, 0.6f, 1.0f), "Have");
+        ImGui.SameLine(ImGui.GetWindowWidth() - 70);
+        ImGui.TextColored(new Vector4(0.6f, 0.6f, 0.6f, 1.0f), "Need");
+
+        foreach (var (itemId, (name, need)) in totals.OrderBy(kv => kv.Value.Name))
+        {
+            var have = GetInventoryCount(itemId);
+            var enough = have >= need;
+
+            ImGui.PushID((int)itemId);
+
+            // Material name — truncate if needed
+            var nameWidth = ImGui.GetWindowWidth() - ImGui.GetCursorPosX() - 130;
+            ImGui.TextColored(new Vector4(1f, 1f, 1f, 1f), $"  {name}");
+
+            if (ImGui.IsItemHovered() && name.Length > 28)
+                ImGui.SetTooltip(name);
+
+            // Have count — green if sufficient, red if not
+            ImGui.SameLine(ImGui.GetWindowWidth() - 120);
+            var haveColor = enough
+                ? new Vector4(0.3f, 1.0f, 0.3f, 1.0f)
+                : new Vector4(1.0f, 0.35f, 0.35f, 1.0f);
+            ImGui.TextColored(haveColor, $"{have}");
+
+            // Need count
+            ImGui.SameLine(ImGui.GetWindowWidth() - 70);
+            ImGui.TextColored(new Vector4(0.85f, 0.85f, 0.85f, 1.0f), $"{need}");
+
+            ImGui.PopID();
+        }
+
+        ImGui.Spacing();
+    }
+
+    /// <summary>
+    /// Returns total count of an item across all 4 main inventory pages.
+    /// </summary>
+    private int GetInventoryCount(uint itemId)
+    {
+        var total = 0;
+        var pages = new[]
+        {
+            GameInventoryType.Inventory1,
+            GameInventoryType.Inventory2,
+            GameInventoryType.Inventory3,
+            GameInventoryType.Inventory4,
+        };
+
+        foreach (var page in pages)
+        {
+            try
+            {
+                var slots = gameInventory.GetInventoryItems(page);
+                foreach (var slot in slots)
+                {
+                    if (slot.ItemId == itemId)
+                        total += slot.Quantity;
+                }
+            }
+            catch
+            {
+                // Inventory not accessible (e.g. not logged in) — skip silently
+            }
+        }
+
+        return total;
     }
 
     private void DrawAddFromCraftingLog()

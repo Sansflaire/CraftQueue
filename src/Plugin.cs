@@ -21,6 +21,7 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static IDataManager DataManager { get; private set; } = null!;
     [PluginService] internal static IFramework Framework { get; private set; } = null!;
     [PluginService] internal static ICondition Condition { get; private set; } = null!;
+    [PluginService] internal static IGameInventory GameInventory { get; private set; } = null!;
 
     private const string CommandMain = "/craftqueue";
     private const string CommandShort = "/cq";
@@ -47,7 +48,7 @@ public sealed class Plugin : IDalamudPlugin
         queueManager = new QueueManager();
         settingsWindow = new SettingsWindow(config, PluginInterface);
         favoritesWindow = new FavoritesWindow(config, PluginInterface, queueManager, DataManager, ChatGui, Log);
-        mainWindow = new MainWindow(queueManager, artisan, recipeMonitor, config, PluginInterface, settingsWindow, favoritesWindow, DataManager, Condition, ChatGui, Log);
+        mainWindow = new MainWindow(queueManager, artisan, recipeMonitor, config, PluginInterface, settingsWindow, favoritesWindow, DataManager, Condition, GameInventory, ChatGui, Log);
 
         // Wire up events
         recipeMonitor.CraftingLogOpened += OnCraftingLogOpened;
