@@ -1,0 +1,14 @@
+{
+    "Author": "Claude & Trist",
+    "Name": "Craft Queue",
+    "InternalName": "CraftQueue",
+    "Punchline": "A crafting list manager that integrates with Artisan.",
+    "Description": "Craft Queue lets you browse recipes from the crafting log, add them to a personal queue with quantities and material preferences, organize them, then send them to Artisan for automated execution. It is the shopping list to Artisan's cook.",
+    "ApplicableVersion": "any",
+    "DalamudApiLevel": 14,
+    "Tags": [
+        "crafting",
+        "utility",
+        "artisan"
+    ]
+}
