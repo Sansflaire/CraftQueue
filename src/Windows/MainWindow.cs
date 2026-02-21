@@ -24,8 +24,9 @@ public sealed class MainWindow : IDisposable
     private readonly IChatGui chatGui;
     private readonly IPluginLog log;
 
-    // Reference to settings window so we can toggle it from the gear button
+    // References to other windows so we can toggle them from buttons
     private readonly SettingsWindow settingsWindow;
+    private readonly FavoritesWindow favoritesWindow;
 
     public bool IsVisible { get; set; }
 
@@ -50,9 +51,7 @@ public sealed class MainWindow : IDisposable
 
     // Drag-and-drop state
     private Guid draggedItemId;
-
-    // Favorites editing state
-    private int editFavoriteQtyValue;
+    private static readonly byte[] DragPayloadData = { 1 };
 
     public MainWindow(
         QueueManager queueManager,
@@ -61,6 +60,7 @@ public sealed class MainWindow : IDisposable
         Configuration config,
         IDalamudPluginInterface pluginInterface,
         SettingsWindow settingsWindow,
+        FavoritesWindow favoritesWindow,
         IDataManager dataManager,
         ICondition condition,
         IChatGui chatGui,
@@ -72,6 +72,7 @@ public sealed class MainWindow : IDisposable
         this.config = config;
         this.pluginInterface = pluginInterface;
         this.settingsWindow = settingsWindow;
+        this.favoritesWindow = favoritesWindow;
         this.dataManager = dataManager;
         this.condition = condition;
         this.chatGui = chatGui;
@@ -164,13 +165,6 @@ public sealed class MainWindow : IDisposable
                 ImGui.Separator();
                 DrawQueueList();
                 ImGui.Separator();
-
-                if (config.ShowFavorites && config.Favorites.Count > 0)
-                {
-                    DrawFavorites();
-                    ImGui.Separator();
-                }
-
                 DrawAddFromCraftingLog();
             }
         }
@@ -222,7 +216,7 @@ public sealed class MainWindow : IDisposable
         }
 
         // Control buttons on the right
-        ImGui.SameLine(ImGui.GetWindowWidth() - 180);
+        ImGui.SameLine(ImGui.GetWindowWidth() - 210);
 
         var canCraft = artisan.ArtisanAvailable && !artisanBusy && queueManager.Count > 0;
         if (!canCraft)
@@ -250,7 +244,19 @@ public sealed class MainWindow : IDisposable
         if (!artisanBusy)
             ImGui.EndDisabled();
 
-        // Gear icon for settings
+        // Favorites toggle
+        ImGui.SameLine();
+        if (ImGui.SmallButton("F"))
+        {
+            favoritesWindow.IsVisible = !favoritesWindow.IsVisible;
+        }
+
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Favorites");
+        }
+
+        // Settings toggle
         ImGui.SameLine();
         if (ImGui.SmallButton("S"))
         {
@@ -321,19 +327,30 @@ public sealed class MainWindow : IDisposable
             _ => new Vector4(1.0f, 1.0f, 1.0f, 1.0f),
         };
 
-        // Drag handle
-        ImGui.TextColored(new Vector4(0.5f, 0.5f, 0.5f, 1.0f), "=");
+        // Drag handle — source only; drop target is on the name Selectable below
+        ImGui.SmallButton("=");
 
-        // Drag source
         if (ImGui.BeginDragDropSource(ImGuiDragDropFlags.SourceNoHoldToOpenOthers))
         {
             draggedItemId = item.Id;
-            ImGui.SetDragDropPayload("CQ_ITEM", ReadOnlySpan<byte>.Empty);
+            ImGui.SetDragDropPayload("CQ_ITEM", DragPayloadData);
             ImGui.Text(item.ItemName);
             ImGui.EndDragDropSource();
         }
 
-        // Drag target
+        ImGui.SameLine();
+
+        // Item name as a Selectable — acts as the drop target for reordering.
+        // Keeping source and target on separate widgets prevents the target row
+        // from disappearing when hovered during a drag.
+        var nameLabel = item.Status == QueueItemStatus.Crafting
+            ? $"{item.ItemName} ..."
+            : item.ItemName;
+        var nameWidth = ImGui.GetWindowWidth() - ImGui.GetCursorPosX() - 195;
+        ImGui.PushStyleColor(ImGuiCol.Text, statusColor);
+        ImGui.Selectable($"{nameLabel}###qi_{item.Id}", false, ImGuiSelectableFlags.None, new Vector2(nameWidth, 0));
+        ImGui.PopStyleColor();
+
         if (ImGui.BeginDragDropTarget())
         {
             unsafe
@@ -345,17 +362,6 @@ public sealed class MainWindow : IDisposable
                 }
             }
             ImGui.EndDragDropTarget();
-        }
-
-        ImGui.SameLine();
-
-        // Item name with status color
-        ImGui.TextColored(statusColor, item.ItemName);
-
-        if (item.Status == QueueItemStatus.Crafting)
-        {
-            ImGui.SameLine();
-            ImGui.TextColored(new Vector4(1.0f, 0.9f, 0.2f, 1.0f), "...");
         }
 
         // Quantity controls on the right side
@@ -504,96 +510,6 @@ public sealed class MainWindow : IDisposable
         }
     }
 
-    private void DrawFavorites()
-    {
-        if (ImGui.CollapsingHeader($"Favorites ({config.Favorites.Count})###favorites_header"))
-        {
-            if (config.Favorites.Count == 0)
-            {
-                ImGui.TextColored(new Vector4(0.5f, 0.5f, 0.5f, 1.0f), "  No favorites yet. Star a recipe to add it.");
-            }
-            else
-            {
-                // We may remove items during iteration, so track removal
-                FavoriteRecipe? toRemove = null;
-
-                for (var i = 0; i < config.Favorites.Count; i++)
-                {
-                    var fav = config.Favorites[i];
-                    ImGui.PushID($"fav_{fav.RecipeId}");
-
-                    // Star icon
-                    ImGui.TextColored(new Vector4(1.0f, 0.85f, 0.0f, 1.0f), "*");
-                    ImGui.SameLine();
-
-                    // Recipe name
-                    ImGui.Text(fav.ItemName);
-                    ImGui.SameLine();
-
-                    // Quick-add button — pass stored materials as a fresh copy
-                    if (ImGui.SmallButton($"Add x{fav.DefaultQuantity}"))
-                    {
-                        var mats = fav.Materials.Count > 0
-                            ? fav.Materials.Select(m => new MaterialPreference
-                                {
-                                    ItemId = m.ItemId,
-                                    ItemName = m.ItemName,
-                                    NqCount = m.NqCount,
-                                    HqCount = m.HqCount,
-                                }).ToArray()
-                            : ReadRecipeMaterials(fav.RecipeId);
-                        queueManager.AddItem(fav.RecipeId, fav.ItemName, fav.DefaultQuantity, mats);
-                        chatGui.Print($"[CraftQueue] Added {fav.DefaultQuantity}x {fav.ItemName} from favorites.");
-                    }
-
-                    ImGui.SameLine();
-
-                    // Edit default quantity button
-                    if (ImGui.SmallButton("Qty"))
-                    {
-                        ImGui.OpenPopup($"fav_qty_popup_{fav.RecipeId}");
-                        editFavoriteQtyValue = fav.DefaultQuantity;
-                    }
-
-                    if (ImGui.BeginPopup($"fav_qty_popup_{fav.RecipeId}"))
-                    {
-                        ImGui.Text("Default Quantity:");
-                        ImGui.SetNextItemWidth(100);
-                        ImGui.InputInt("##favqty", ref editFavoriteQtyValue);
-                        editFavoriteQtyValue = Math.Clamp(editFavoriteQtyValue, 1, 9999);
-
-                        if (ImGui.Button("Set"))
-                        {
-                            fav.DefaultQuantity = editFavoriteQtyValue;
-                            SaveConfig();
-                            ImGui.CloseCurrentPopup();
-                        }
-
-                        ImGui.SameLine();
-
-                        if (ImGui.Button("Remove"))
-                        {
-                            toRemove = fav;
-                            ImGui.CloseCurrentPopup();
-                        }
-
-                        ImGui.EndPopup();
-                    }
-
-                    ImGui.PopID();
-                }
-
-                if (toRemove != null)
-                {
-                    config.Favorites.Remove(toRemove);
-                    SaveConfig();
-                }
-            }
-
-            ImGui.Spacing();
-        }
-    }
-
     private void DrawAddFromCraftingLog()
     {
         ImGui.Text("Add from Crafting Log");
@@ -711,7 +627,7 @@ public sealed class MainWindow : IDisposable
 
     private bool IsFavorite(ushort recipeId)
     {
-        return config.Favorites.Any(f => f.RecipeId == recipeId);
+        return config.IsFavorite(recipeId);
     }
 
     private void AddFavorite(ushort recipeId, string itemName, int defaultQuantity)
@@ -721,7 +637,8 @@ public sealed class MainWindow : IDisposable
 
         var materials = ReadRecipeMaterials(recipeId);
 
-        config.Favorites.Add(new FavoriteRecipe
+        // Add to the first group (there is always at least one after migration)
+        config.FavoriteGroups[0].Recipes.Add(new FavoriteRecipe
         {
             RecipeId = recipeId,
             ItemName = itemName,
@@ -735,12 +652,16 @@ public sealed class MainWindow : IDisposable
 
     private void RemoveFavorite(ushort recipeId)
     {
-        var fav = config.Favorites.FirstOrDefault(f => f.RecipeId == recipeId);
-        if (fav != null)
+        foreach (var group in config.FavoriteGroups)
         {
-            config.Favorites.Remove(fav);
-            SaveConfig();
-            chatGui.Print($"[CraftQueue] Removed {fav.ItemName} from favorites.");
+            var fav = group.Recipes.FirstOrDefault(f => f.RecipeId == recipeId);
+            if (fav != null)
+            {
+                group.Recipes.Remove(fav);
+                SaveConfig();
+                chatGui.Print($"[CraftQueue] Removed {fav.ItemName} from favorites.");
+                return;
+            }
         }
     }
 

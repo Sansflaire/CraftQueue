@@ -31,20 +31,23 @@ public sealed class Plugin : IDalamudPlugin
     private readonly QueueManager queueManager;
     private readonly MainWindow mainWindow;
     private readonly SettingsWindow settingsWindow;
+    private readonly FavoritesWindow favoritesWindow;
 
     private DateTime lastPoll = DateTime.MinValue;
 
     public Plugin()
     {
-        // Load config
+        // Load config and migrate if needed
         config = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
+        config.MigrateIfNeeded();
 
         // Create services
         artisan = new ArtisanIpcBridge(PluginInterface, Log);
         recipeMonitor = new RecipeNoteMonitor(AddonLifecycle, Log);
         queueManager = new QueueManager();
         settingsWindow = new SettingsWindow(config, PluginInterface);
-        mainWindow = new MainWindow(queueManager, artisan, recipeMonitor, config, PluginInterface, settingsWindow, DataManager, Condition, ChatGui, Log);
+        favoritesWindow = new FavoritesWindow(config, PluginInterface, queueManager, DataManager, ChatGui, Log);
+        mainWindow = new MainWindow(queueManager, artisan, recipeMonitor, config, PluginInterface, settingsWindow, favoritesWindow, DataManager, Condition, ChatGui, Log);
 
         // Wire up events
         recipeMonitor.CraftingLogOpened += OnCraftingLogOpened;
@@ -55,8 +58,9 @@ public sealed class Plugin : IDalamudPlugin
         {
             HelpMessage =
                 "Toggle the queue window\n" +
-                "  /cq settings  Open settings\n" +
-                "  /cq stop      Stop queue",
+                "  /cq settings   Open settings\n" +
+                "  /cq favorites  Toggle favorites window\n" +
+                "  /cq stop       Stop queue",
         });
 
         CommandManager.AddHandler(CommandMain, new CommandInfo(OnCommand)
@@ -94,6 +98,7 @@ public sealed class Plugin : IDalamudPlugin
         recipeMonitor.CraftingLogClosed -= OnCraftingLogClosed;
 
         // Dispose services
+        favoritesWindow.Dispose();
         settingsWindow.Dispose();
         mainWindow.Dispose();
         recipeMonitor.Dispose();
@@ -119,13 +124,18 @@ public sealed class Plugin : IDalamudPlugin
                 settingsWindow.IsVisible = !settingsWindow.IsVisible;
                 break;
 
+            case "favorites":
+            case "fav":
+                favoritesWindow.IsVisible = !favoritesWindow.IsVisible;
+                break;
+
             case "stop":
                 mainWindow.StopCrafting();
                 ChatGui.Print("[CraftQueue] Stop requested.");
                 break;
 
             default:
-                ChatGui.Print("[CraftQueue] Usage: /cq | /cq settings | /cq stop");
+                ChatGui.Print("[CraftQueue] Usage: /cq | /cq settings | /cq favorites | /cq stop");
                 break;
         }
     }
@@ -133,7 +143,11 @@ public sealed class Plugin : IDalamudPlugin
     private void OnCraftingLogOpened()
     {
         if (config.AutoOpenWithCraftingLog)
+        {
             mainWindow.IsVisible = true;
+            if (config.ShowFavorites)
+                favoritesWindow.IsVisible = true;
+        }
     }
 
     private void OnCraftingLogClosed()
@@ -145,6 +159,8 @@ public sealed class Plugin : IDalamudPlugin
     private void OnOpenMainUi()
     {
         mainWindow.IsVisible = true;
+        if (config.ShowFavorites)
+            favoritesWindow.IsVisible = true;
     }
 
     private void OnOpenConfigUi()
@@ -156,6 +172,7 @@ public sealed class Plugin : IDalamudPlugin
     {
         mainWindow.Draw();
         settingsWindow.Draw();
+        favoritesWindow.Draw();
     }
 
     private void OnFrameworkUpdate(IFramework framework)

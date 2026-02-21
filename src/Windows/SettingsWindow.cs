@@ -95,7 +95,7 @@ public sealed class SettingsWindow : IDisposable
             }
 
             var showFavorites = config.ShowFavorites;
-            if (ImGui.Checkbox("Show Favorites section", ref showFavorites))
+            if (ImGui.Checkbox("Auto-open Favorites window with main window", ref showFavorites))
             {
                 config.ShowFavorites = showFavorites;
                 Save();
