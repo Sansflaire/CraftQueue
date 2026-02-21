@@ -440,9 +440,9 @@ public sealed class MainWindow : IDisposable
             {
                 // Column headers
                 ImGui.Text("Material");
-                ImGui.SameLine(220);
+                ImGui.SameLine(200);
                 ImGui.Text("NQ");
-                ImGui.SameLine(260);
+                ImGui.SameLine(230);
                 ImGui.Text("HQ");
                 ImGui.Separator();
 
@@ -454,37 +454,40 @@ public sealed class MainWindow : IDisposable
 
                     // Material name
                     ImGui.Text(mat.ItemName);
-                    ImGui.SameLine(220);
+                    ImGui.SameLine(200);
 
-                    // NQ count display
+                    // NQ count
                     ImGui.Text($"{mat.NqCount}");
-                    ImGui.SameLine(260);
+                    ImGui.SameLine(230);
 
-                    // HQ count — editable via toggle
+                    // HQ count
                     if (mat.HqCount > 0)
                         ImGui.TextColored(new Vector4(0.4f, 0.8f, 1.0f, 1.0f), $"{mat.HqCount}");
                     else
                         ImGui.TextColored(new Vector4(0.5f, 0.5f, 0.5f, 1.0f), "0");
 
-                    ImGui.SameLine(290);
+                    // +/- buttons to shift between NQ and HQ
+                    ImGui.SameLine(260);
 
-                    // Toggle: move all to HQ
-                    if (mat.HqCount == 0)
+                    var canAddHq = mat.NqCount > 0;
+                    if (!canAddHq) ImGui.BeginDisabled();
+                    if (ImGui.SmallButton("+"))
                     {
-                        if (ImGui.SmallButton("Use HQ"))
-                        {
-                            mat.HqCount = total;
-                            mat.NqCount = 0;
-                        }
+                        mat.HqCount++;
+                        mat.NqCount--;
                     }
-                    else
+                    if (!canAddHq) ImGui.EndDisabled();
+
+                    ImGui.SameLine();
+
+                    var canRemoveHq = mat.HqCount > 0;
+                    if (!canRemoveHq) ImGui.BeginDisabled();
+                    if (ImGui.SmallButton("-"))
                     {
-                        if (ImGui.SmallButton("Use NQ"))
-                        {
-                            mat.NqCount = total;
-                            mat.HqCount = 0;
-                        }
+                        mat.HqCount--;
+                        mat.NqCount++;
                     }
+                    if (!canRemoveHq) ImGui.EndDisabled();
 
                     ImGui.PopID();
                 }
