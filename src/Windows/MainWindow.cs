@@ -530,10 +530,19 @@ public sealed class MainWindow : IDisposable
                     ImGui.Text(fav.ItemName);
                     ImGui.SameLine();
 
-                    // Quick-add button
+                    // Quick-add button — pass stored materials as a fresh copy
                     if (ImGui.SmallButton($"Add x{fav.DefaultQuantity}"))
                     {
-                        queueManager.AddItem(fav.RecipeId, fav.ItemName, fav.DefaultQuantity);
+                        var mats = fav.Materials.Count > 0
+                            ? fav.Materials.Select(m => new MaterialPreference
+                                {
+                                    ItemId = m.ItemId,
+                                    ItemName = m.ItemName,
+                                    NqCount = m.NqCount,
+                                    HqCount = m.HqCount,
+                                }).ToArray()
+                            : ReadRecipeMaterials(fav.RecipeId);
+                        queueManager.AddItem(fav.RecipeId, fav.ItemName, fav.DefaultQuantity, mats);
                         chatGui.Print($"[CraftQueue] Added {fav.DefaultQuantity}x {fav.ItemName} from favorites.");
                     }
 
@@ -710,12 +719,14 @@ public sealed class MainWindow : IDisposable
         if (IsFavorite(recipeId))
             return;
 
+        var materials = ReadRecipeMaterials(recipeId);
+
         config.Favorites.Add(new FavoriteRecipe
         {
             RecipeId = recipeId,
             ItemName = itemName,
             DefaultQuantity = Math.Clamp(defaultQuantity, 1, 9999),
-            DefaultNqOnly = true,
+            Materials = new System.Collections.Generic.List<MaterialPreference>(materials),
         });
 
         SaveConfig();

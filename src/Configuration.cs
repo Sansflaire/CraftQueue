@@ -3,6 +3,8 @@ using System.Collections.Generic;
 
 using Dalamud.Configuration;
 
+using CraftQueue.Models;
+
 namespace CraftQueue;
 
 [Serializable]
@@ -37,5 +39,5 @@ public sealed class FavoriteRecipe
     public ushort RecipeId { get; set; }
     public string ItemName { get; set; } = string.Empty;
     public int DefaultQuantity { get; set; } = 1;
-    public bool DefaultNqOnly { get; set; } = true;
+    public List<MaterialPreference> Materials { get; set; } = new();
 }
