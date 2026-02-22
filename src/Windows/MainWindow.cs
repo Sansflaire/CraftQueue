@@ -353,7 +353,7 @@ public sealed class MainWindow : IDisposable
         var nameLabel = item.Status == QueueItemStatus.Crafting
             ? $"{item.ItemName} ..."
             : item.ItemName;
-        var nameWidth = ImGui.GetWindowWidth() - ImGui.GetCursorPosX() - 195;
+        var nameWidth = ImGui.GetWindowWidth() - ImGui.GetCursorPosX() - 230;
         ImGui.PushStyleColor(ImGuiCol.Text, statusColor);
         ImGui.Selectable($"{nameLabel}###qi_{item.Id}", false, ImGuiSelectableFlags.None, new Vector2(nameWidth, 0));
         ImGui.PopStyleColor();
@@ -372,7 +372,7 @@ public sealed class MainWindow : IDisposable
         }
 
         // Quantity controls on the right side
-        ImGui.SameLine(ImGui.GetWindowWidth() - 195);
+        ImGui.SameLine(ImGui.GetWindowWidth() - 230);
 
         if (ImGui.SmallButton("-"))
         {
@@ -396,7 +396,7 @@ public sealed class MainWindow : IDisposable
         if (!canCraftSingle)
             ImGui.BeginDisabled();
 
-        if (ImGui.SmallButton(">"))
+        if (ImGui.SmallButton("CRAFT"))
             OnCraftSingle(item);
 
         if (!canCraftSingle)
@@ -409,7 +409,7 @@ public sealed class MainWindow : IDisposable
         if (hasHq)
             ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.4f, 0.8f, 1.0f, 1.0f));
 
-        if (ImGui.SmallButton("M"))
+        if (ImGui.SmallButton("MATS"))
         {
             ImGui.OpenPopup($"mat_popup_{item.Id}");
         }
